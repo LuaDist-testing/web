@@ -1,7 +1,7 @@
 local http = require('resty.http')
 local std = require('deviant')
 
-local _M = { version = "0.2.1" }
+local _M = { version = "0.2.2" }
 
 
 local url = {}
@@ -35,22 +35,22 @@ end
 
 url.build = function (url)
 
-    local url = ''
+    local urlString = ''
     if url.scheme then
         if url.scheme == 'unix' and url.socket then
-            url = url.scheme .. ':' .. url.socket
-            if url.path then url = url .. ':' .. url.path end
-            if url.query then url = url .. '?' .. url.query end
+            urlString = url.scheme .. ':' .. url.socket
+            if url.path then urlString = urlString .. ':' .. url.path end
+            if url.query then urlString = urlString .. '?' .. url.query end
         else
-            if url.host then url = url.scheme .. '://' .. url.host end
-            if url.port then url = url .. ':' .. url.port end
-            if url.path then url = url .. url.path end
-            if url.query then url = url .. '?' .. url.query end
+            if url.host then urlString = url.scheme .. '://' .. url.host end
+            if url.port then urlString = urlString .. ':' .. url.port end
+            if url.path then urlString = urlString .. url.path end
+            if url.query then urlString = urlString .. '?' .. url.query end
         end 
     else
-        url = nil
+        urlString = nil
     end
-    return url
+    return urlString
 
 end
 
@@ -94,10 +94,12 @@ local function request(uri, httpOpts, connectionOpts)
     
     local httpc = http.new()
     httpc:set_timeout(connectionOpts.timeout)
-
     local ok, err 
     if parsedUrl.scheme ~= 'unix' then 
         ok, err = httpc:connect(address, connectionOpts.port)
+        if parsedUrl.scheme == 'https' then
+            httpc:ssl_handshake(nil, parsedUrl.host, httpOpts.ssl_verify)
+        end
     else
         ok, err = httpc:connect(address)
     end

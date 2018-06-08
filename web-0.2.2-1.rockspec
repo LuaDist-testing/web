@@ -1,15 +1,15 @@
 -- This file was automatically generated for the LuaDist project.
 
 package = "web"
- version = "0.2.1-1"
+ version = "0.2.2-1"
 -- LuaDist source
 source = {
-  tag = "0.2.1-1",
+  tag = "0.2.2-1",
   url = "git://github.com/LuaDist-testing/web.git"
 }
 -- Original source
 --  source = {
---     url = "https://git.deviant.guru/luarocks/web/archive/v0.2.1-1.zip",
+--     url = "https://git.deviant.guru/luarocks/web/archive/v0.2.2-1.zip",
 --     dir = "web",
 --  }
  description = {
