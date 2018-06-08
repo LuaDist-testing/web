@@ -1,8 +1,6 @@
-local http = require('resty.http')
 local std = require('deviant')
 
-local _M = { version = "0.2.3" }
-
+local _M = { version = "0.2.4" }
 
 local url = {}
 
@@ -39,7 +37,8 @@ url.build = function (url)
     if url.scheme then
         if url.scheme == 'unix' and url.socket then
             urlString = url.scheme .. ':' .. url.socket
-            if url.path then urlString = urlString .. ':' .. url.path end
+            -- don't forget to remove that 'http:' part from the path
+            if url.path then urlString = urlString .. ':' .. string.sub(url.path,6) end
             if url.query then urlString = urlString .. '?' .. url.query end
         else
             if url.host then urlString = url.scheme .. '://' .. url.host end
@@ -54,58 +53,49 @@ url.build = function (url)
 
 end
 
-local function request(uri, httpOpts, connectionOpts)
- 
-    -- if there is no connectionOpts table provided, we will use
-    -- these defaults - 1 second timeout and port 80 (although port will be
-    -- changed to 443 if the scheme of the uri is https, or, if the port was
-    -- was provided in the url, we will use that value)
-    local connectionDefaults = { timeout = 1000, port = 80 }
-
-    -- same for httpOpts -- if there is none, we will use the defaults below
-    local httpDefaults = { method = "GET", body = "", headers = {}, ssl_verify = false }
-    -- the actual host to connect to: this will be deducted from the url,
-    -- it may be a unix socket, in this case the url should look like this:
-    -- unix:/path/to/unix/socket.sock:/request/path?request_query
-    local address
-
-    local parsedUrl = url.parse(uri)
-
-    if parsedUrl.scheme == 'unix' then
-        address = 'unix:' .. parsedUrl.socket
-        -- 'localhost' is a reasonable default for the Host header
-        -- when connecting to a unix socket. Anyways it can be overriden
-        -- in the httpOpts table
-        httpDefaults.headers['Host'] = 'localhost'
-    else
-        address = parsedUrl.host 
-        httpDefaults.headers['Host'] = parsedUrl.host
-        if parsedUrl.port then 
-            connectionDefaults.port = parsedUrl.port
-        elseif parsedUrl.scheme == 'https' then 
-            connectionDefaults.port = 443 
-        end
-    end
-
-    httpDefaults.path = parsedUrl.path
-    httpDefaults.query = parsedUrl.query
-    local connectionOpts = std.mergeTables(connectionDefaults, connectionOpts)
-    local httpOpts = std.mergeTables(httpDefaults, httpOpts)
+local function newAPI()
     
+    local api
+    api  = {
+        actions = { ['nop'] = { action = function () end, pattern = '' } },
+        process = function(uri)
+            for name, action in pairs(api.actions) do
+                if string.match(uri, action.pattern) then
+                    local args = { string.match(uri, action.pattern) }
+                    if table.unpack then
+                        api.actions[name].action(table.unpack(args))
+                    else
+                        api.actions[name].action(unpack(args))
+                    end
+                    -- since we got our match we want to 
+                    -- stop processing
+                    break
+                end
+            end
+        end   
+    }
+    return api
+
+end
+
+local function requestResty(request, connectionOpts)
+
+    local http = require("resty.http")
     local httpc = http.new()
     httpc:set_timeout(connectionOpts.timeout)
+
     local ok, err 
-    if parsedUrl.scheme ~= 'unix' then 
-        ok, err = httpc:connect(address, connectionOpts.port)
-        if parsedUrl.scheme == 'https' then
-            httpc:ssl_handshake(nil, parsedUrl.host, httpOpts.ssl_verify)
+    if request.scheme ~= 'unix' then 
+        ok, err = httpc:connect(connectionOpts.address, connectionOpts.port)
+        if request.scheme == 'https' then
+            httpc:ssl_handshake(nil, request.headers['Host'], request.ssl_verify)
         end
     else
-        ok, err = httpc:connect(address)
+        ok, err = httpc:connect(connectionOpts.address)
     end
     if not ok then return nil, err end
 
-    local res, err = httpc:request(httpOpts)
+    local res, err = httpc:request(request)
     local results = {}
 
     if res then 
@@ -121,24 +111,90 @@ local function request(uri, httpOpts, connectionOpts)
 
 end
 
-local function newAPI()
+local function requestSocket(request, timeout)
+
+    local http, unix
+    local ltn12 = require('ltn12')
+
+    if request.scheme == 'https' then
+        http = require('ssl.https')
+    else
+        http = require('socket.http')
+    end
+    if request.scheme == 'unix' then 
+        unix = require('socket.unix') 
+        request.create = unix
+    end
+
+    http.TIMEOUT = timeout -- this one should be in seconds
+    local body = {}
+    request.sink =  ltn12.sink.table(body)
+
+    if #request.body > 0 then 
+        request.headers['content-length'] = string.len(request.body) 
+        request.source = ltn12.source.string(request.body)
+    end
+
+    local result, status, headers, statusLine = http.request(request)
+        
+    if result == 1 then
+        return { body = table.concat(body), status = status, headers = headers }
+    else
+        return nil, status
+    end
+
+end
+
+local function request(uri, httpOpts, timeout)
+ 
+    local timeout = timeout or 1000 -- default timeout is 1 second
+    local port = 80 -- default port (will be changed to 443 if the scheme is https, also you can override this in the uri)
+    local server -- the actual server to connect to
+
+    -- These are the defaults if no httpOpts table provided in the args.
+    -- Even if there is one, but, say, it lacks the method field, then GET
+    -- method will be used.
+    local httpDefaults = { method = "GET", body = "", headers = {}, ssl_verify = false }
+
+    local parsedUrl = url.parse(uri)
+
+    if parsedUrl.scheme == 'unix' then
+        server = 'unix:' .. parsedUrl.socket
+        --[[ 'localhost' is a reasonable default for the Host header
+             when connecting to a unix socket. Anyways it can be overriden
+             in the httpOpts table                  ]]--
+        httpDefaults.headers['Host'] = 'localhost'
+    else
+        server = parsedUrl.host 
+        httpDefaults.headers['Host'] = parsedUrl.host
+        if parsedUrl.port then 
+            port = parsedUrl.port
+        elseif parsedUrl.scheme == 'https' then 
+            port = 443 
+        end
+    end
+
+    httpDefaults.scheme = parsedUrl.scheme
+    httpDefaults.path = parsedUrl.path
+    httpDefaults.query = parsedUrl.query
+    local httpOpts = std.mergeTables(httpDefaults, httpOpts)
+
+    if std.moduleAvailable('resty.http') then    
+
+        local results, err = requestResty(httpOpts, { port = port, timeout = timeout, address = server })
+        return results, err
     
-    local api
-    api  = {
-        actions = { ['nop'] = { action = function () end, pattern = '' } },
-        process = function(uri)
-            for name, action in pairs(api.actions) do
-                if string.match(uri, action.pattern) then
-                    local args = { string.match(uri, action.pattern) }
-                    api.actions[name].action(table.unpack(args))
-                    -- since we got our match we want to 
-                    -- stop processing
-                    break
-                end
-            end
-        end   
-    }
-    return api
+    elseif std.moduleAvailable('socket.http') then
+    
+        httpOpts.url = uri 
+        if httpOpts.scheme == 'unix' then 
+            httpOpts.url = nil
+            httpOpts.host = parsedUrl.socket
+        end
+        local results, err = requestSocket(httpOpts, timeout/1000)
+        return results, err
+
+    end
 
 end
 

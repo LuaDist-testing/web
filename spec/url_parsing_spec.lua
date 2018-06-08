@@ -2,7 +2,7 @@ local web = require("src/web")
 
 describe("Test url parsing & building:", function()
 
-  it("test #plain uri", function()
+  it("test #plain #URL", function()
 
     local testUrl = "http://12factor.com/some/article?paged=true"
     local expected = { scheme = 'http', host = '12factor.com', path = '/some/article', query = 'paged=true' }
@@ -11,7 +11,7 @@ describe("Test url parsing & building:", function()
 
   end)
 
-  it("test uri with port", function()
+  it("test #URL with port", function()
 
     local testUrl = "https://12factor.com:8443/some/other/article?paged=false&foo=bar"
     local expected = { scheme = 'https', host = '12factor.com', port = 8443, path = '/some/other/article', query = 'paged=false&foo=bar' }
@@ -20,7 +20,7 @@ describe("Test url parsing & building:", function()
 
   end)
 
-  it("test uri with #unix socket", function()
+  it("test #URL with #unix socket", function()
 
     local testUrl = "unix:/var/run/docker.sock:/containers/list?json=true"
     -- web.url.parse should append "http:" to the path
@@ -30,7 +30,7 @@ describe("Test url parsing & building:", function()
 
   end)
 
-  it("test url building", function ()
+  it("test plain #URL building", function ()
     
     local testUrl = "http://sub.example-example.com:8443/id/1234/get?paged=true"
     local expected = testUrl
@@ -39,6 +39,16 @@ describe("Test url parsing & building:", function()
     assert.are.equal(expected, actual)
   
   end)
+
+  it("test unix socket #URL building", function ()
+    
+    local testUrl = "unix:/var/run/docker.sock:/containers/list?json=true"
+    local expected = testUrl
+    local parsedUrl = web.url.parse(testUrl)
+    local actual = web.url.build(parsedUrl)
+    assert.are.equal(expected, actual)
+
+  end) 
 
 end)
 
