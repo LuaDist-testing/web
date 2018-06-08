@@ -1,7 +1,7 @@
 local http = require('resty.http')
 local std = require('deviant')
 
-local _M = { version = "0.2.2" }
+local _M = { version = "0.2.3" }
 
 
 local url = {}
@@ -131,6 +131,9 @@ local function newAPI()
                 if string.match(uri, action.pattern) then
                     local args = { string.match(uri, action.pattern) }
                     api.actions[name].action(table.unpack(args))
+                    -- since we got our match we want to 
+                    -- stop processing
+                    break
                 end
             end
         end   
