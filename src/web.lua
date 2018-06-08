@@ -1,7 +1,7 @@
 local http = require('resty.http')
 local std = require('deviant')
 
-local _M = { version = "0.2" }
+local _M = { version = "0.2.1" }
 
 
 local url = {}
@@ -9,12 +9,14 @@ local url = {}
 url.parse = function(str)
     
     local url = {}
-    url.scheme, url.host, url.path, url.query = string.match(str,'(https?)://([%w-.]+)(/?[^?]*)%??(.*)')
+    url.scheme, url.host, url.port, url.path, url.query = string.match(str,'(https?)://([^:/]+):?([^/]*)(/?[^?]*)%??(.*)')
     if not url.scheme then
         url.scheme, url.socket, url.path, url.query = string.match(str, '(unix):(/[^%:]+):(/?[^?]*)%??(.*)')
         url.path = 'http:' .. url.path
     end
     if url.path == '' then url.path = '/' end
+    url.port = tonumber(url.port)
+    if url.query == '' then url.query = nil end
     return url
 
 end
@@ -33,20 +35,38 @@ end
 
 url.build = function (url)
 
-    if url.scheme and url.host and url.path then
-        return url.scheme .. '://' .. url.host .. url.path .. escapeUrl(url.query) 
+    local url = ''
+    if url.scheme then
+        if url.scheme == 'unix' and url.socket then
+            url = url.scheme .. ':' .. url.socket
+            if url.path then url = url .. ':' .. url.path end
+            if url.query then url = url .. '?' .. url.query end
+        else
+            if url.host then url = url.scheme .. '://' .. url.host end
+            if url.port then url = url .. ':' .. url.port end
+            if url.path then url = url .. url.path end
+            if url.query then url = url .. '?' .. url.query end
+        end 
+    else
+        url = nil
     end
+    return url
 
 end
 
 local function request(uri, httpOpts, connectionOpts)
  
     -- if there is no connectionOpts table provided, we will use
-    -- these defaults - 1s timeout and port 80 (although port will be
-    -- changed to 443 if the scheme of the uri is https)
+    -- these defaults - 1 second timeout and port 80 (although port will be
+    -- changed to 443 if the scheme of the uri is https, or, if the port was
+    -- was provided in the url, we will use that value)
     local connectionDefaults = { timeout = 1000, port = 80 }
+
     -- same for httpOpts -- if there is none, we will use the defaults below
     local httpDefaults = { method = "GET", body = "", headers = {}, ssl_verify = false }
+    -- the actual host to connect to: this will be deducted from the url,
+    -- it may be a unix socket, in this case the url should look like this:
+    -- unix:/path/to/unix/socket.sock:/request/path?request_query
     local address
 
     local parsedUrl = url.parse(uri)
@@ -60,7 +80,11 @@ local function request(uri, httpOpts, connectionOpts)
     else
         address = parsedUrl.host 
         httpDefaults.headers['Host'] = parsedUrl.host
-        if parsedUrl.scheme == 'https' then connectionDefaults.port = 443 end
+        if parsedUrl.port then 
+            connectionDefaults.port = parsedUrl.port
+        elseif parsedUrl.scheme == 'https' then 
+            connectionDefaults.port = 443 
+        end
     end
 
     httpDefaults.path = parsedUrl.path
@@ -94,7 +118,6 @@ local function request(uri, httpOpts, connectionOpts)
     return nil, err
 
 end
-
 
 local function newAPI()
     

@@ -1,25 +1,25 @@
 -- This file was automatically generated for the LuaDist project.
 
 package = "web"
- version = "0.2-1"
+ version = "0.2.1-1"
 -- LuaDist source
 source = {
-  tag = "0.2-1",
+  tag = "0.2.1-1",
   url = "git://github.com/LuaDist-testing/web.git"
 }
 -- Original source
 --  source = {
---     url = "https://git.deviant.guru/luarocks/web/archive/v0.2-1.zip",
+--     url = "https://git.deviant.guru/luarocks/web/archive/v0.2.1-1.zip",
 --     dir = "web",
 --  }
  description = {
     summary = "Module for working with web requests",
     detailed = [[
         Lua module to make HTTP requests (a wrapper over lua-resty-http)
-        and simple route parser (poor man's API)      
+        and a simple route parser (poor man's API)      
     ]],
     homepage = "https://git.deviant.guru/luarocks/web",
-    license = "BSD"
+    license = "GPLv3"
  }
  dependencies = {
     "lua >= 5.1",
